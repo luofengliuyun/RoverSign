@@ -86,8 +86,6 @@ async def action_waves_sign_in(uid: str, token: str):
 
 async def action_pgr_sign_in(uid: str, pgr_uid: str, token: str):
     """战双游戏签到"""
-    from ..utils.api.api import PGR_GAME_ID
-
     logger.debug(f"[action_pgr_sign_in] 开始战双签到 - uid: {uid}, pgr_uid: {pgr_uid}")
 
     signed = False
@@ -95,27 +93,17 @@ async def action_pgr_sign_in(uid: str, pgr_uid: str, token: str):
         logger.debug(f"[action_pgr_sign_in] 战双签到开关未开启")
         return signed
 
-    logger.debug(f"[action_pgr_sign_in] 调用 sign_in_task_list - pgr_uid: {pgr_uid}, gameId: {PGR_GAME_ID}")
-    sign_res = await rover_api.sign_in_task_list(pgr_uid, token, gameId=PGR_GAME_ID)
-    logger.debug(f"[action_pgr_sign_in] sign_in_task_list 返回 - success: {sign_res.success}, code: {sign_res.code}, msg: {sign_res.msg}, data: {sign_res.data}")
+    # 战双签到需要先获取正确的 serverId，所以直接调用 pgr_sign_in
+    # 不在这里检查签到状态（会因为 serverId 不正确而返回 1513 错误）
+    logger.debug(f"[action_pgr_sign_in] 调用 pgr_sign_in 执行签到")
+    res = await pgr_sign_in(uid, pgr_uid, token, isForce=False)
+    logger.debug(f"[action_pgr_sign_in] pgr_sign_in 返回结果: {res}")
 
-    if sign_res.success and sign_res.data and isinstance(sign_res.data, dict):
-        signed = sign_res.data.get("isSigIn", False)
-        logger.debug(f"[action_pgr_sign_in] 签到状态检查 - isSigIn: {signed}")
-
-    if not signed:
-        logger.debug(f"[action_pgr_sign_in] 未签到，开始执行签到 - 调用 pgr_sign_in")
-        res = await pgr_sign_in(uid, pgr_uid, token, isForce=True)
-        logger.debug(f"[action_pgr_sign_in] pgr_sign_in 返回结果: {res}")
-        if "成功" in res or "已签到" in res:
-            signed = True
-            logger.info(f"[战双签到] {pgr_uid} 签到完成")
-        else:
-            logger.warning(f"[action_pgr_sign_in] 签到失败: {res}")
-
-    if signed:
-        logger.debug(f"[action_pgr_sign_in] 更新签到记录到数据库")
-        await RoverSign.upsert_rover_sign(RoverSignData.build_pgr_game_sign(uid, pgr_uid))
+    if "成功" in res or "已签到" in res:
+        signed = True
+        logger.info(f"[战双签到] {pgr_uid} 签到完成")
+    else:
+        logger.warning(f"[action_pgr_sign_in] 签到失败: {res}")
 
     logger.debug(f"[action_pgr_sign_in] 战双签到完成 - 最终状态: {signed}")
     return signed
