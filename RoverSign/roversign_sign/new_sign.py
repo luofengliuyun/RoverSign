@@ -366,16 +366,22 @@ async def rover_auto_sign_task():
                 RoverSignConfig.get_config("BBSSchedSignin").data
                 and user.uid in bbs_user
             ) or RoverSignConfig.get_config("SigninMaster").data:
-                await single_task(
-                    user.bot_id,
-                    user.uid,
-                    user.bbs_sign_switch,
-                    user.user_id,
-                    user.cookie,
-                    private_bbs_msgs,
-                    group_bbs_msgs,
-                    all_bbs_msgs,
-                )
+                # 先检查本地签到状态，避免重复请求 API
+                rover_sign = await RoverSign.get_sign_data(user.uid)
+                if rover_sign and SignStatus.bbs_sign_complete(rover_sign, bbs_link_config):
+                    # 已完成社区签到，跳过
+                    logger.debug(f"[社区签到] UID {user.uid} 今日已完成，跳过")
+                else:
+                    await single_task(
+                        user.bot_id,
+                        user.uid,
+                        user.bbs_sign_switch,
+                        user.user_id,
+                        user.cookie,
+                        private_bbs_msgs,
+                        group_bbs_msgs,
+                        all_bbs_msgs,
+                    )
 
                 await asyncio.sleep(random.randint(2, 4))
 
