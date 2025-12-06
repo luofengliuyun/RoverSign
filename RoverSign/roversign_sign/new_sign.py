@@ -196,7 +196,7 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
 
             msg_list.append(f"[鸣潮] 特征码: {waves_uid}")
             msg_list.append(f"签到状态: {SIGN_STATUS[waves_signed]}")
-            msg_list.append("--------------")
+            msg_list.append("-----------------------------")
 
             await asyncio.sleep(random.randint(1, 2))
 
@@ -212,7 +212,7 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
 
             msg_list.append(f"[战双] 特征码: {pgr_uid}")
             msg_list.append(f"签到状态: {SIGN_STATUS[pgr_signed]}")
-            msg_list.append("--------------")
+            msg_list.append("-----------------------------")
 
             await asyncio.sleep(random.randint(1, 2))
 
