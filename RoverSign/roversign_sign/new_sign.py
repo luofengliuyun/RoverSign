@@ -23,6 +23,7 @@ from ..utils.rover_api import rover_api
 from .main import (
     create_sign_info_image,
     do_single_task,
+    get_bbs_link_config,
     get_sign_interval,
     sign_in,
     single_daily_sign,
@@ -92,6 +93,7 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
 
     to_msg = {}
     expire_uid = []
+    bbs_link_config = get_bbs_link_config()
     for uid in uid_list:
         msg_temp: Dict[str, Union[bool, str]] = {
             "signed": False,
@@ -102,7 +104,7 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
         if rover_sign:
             if SignStatus.game_sign_complete(rover_sign):
                 msg_temp["signed"] = "skip"
-            if SignStatus.bbs_sign_complete(rover_sign):
+            if SignStatus.bbs_sign_complete(rover_sign, bbs_link_config):
                 msg_temp["bbs_signed"] = "skip"
 
         if msg_temp["signed"] and msg_temp["bbs_signed"]:
@@ -151,6 +153,7 @@ async def rover_auto_sign_task():
     need_user_list: List[WavesUser] = []
     bbs_user = set()
     sign_user = set()
+    bbs_link_config = get_bbs_link_config()
     if (
         RoverSignConfig.get_config("BBSSchedSignin").data
         or RoverSignConfig.get_config("SchedSignin").data
@@ -166,7 +169,7 @@ async def rover_auto_sign_task():
             rover_sign: Optional[RoverSign] = await RoverSign.get_sign_data(user.uid)
             if rover_sign and SignStatus.game_sign_complete(rover_sign):
                 is_signed_game = True
-            if rover_sign and SignStatus.bbs_sign_complete(rover_sign):
+            if rover_sign and SignStatus.bbs_sign_complete(rover_sign, bbs_link_config):
                 is_signed_bbs = True
 
             if is_signed_game and is_signed_bbs:

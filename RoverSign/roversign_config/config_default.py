@@ -34,6 +34,17 @@ CONFIG_DEFAULT: Dict[str, GSC] = {
         "定时库街区每日任务",
         False,
     ),
+    "BBSLink": GsListStrConfig(
+        "库街区任务列表",
+        "库街区任务列表",
+        ["bbs_sign", "bbs_detail", "bbs_like", "bbs_share"],
+        options=[
+            "bbs_sign",
+            "bbs_detail",
+            "bbs_like",
+            "bbs_share"
+        ],
+    ),
     "SignTime": GsListStrConfig(
         "每晚签到时间设置",
         "每晚库街区签到时间设置（时，分）",

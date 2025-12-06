@@ -1,6 +1,6 @@
 import asyncio
 import random
-from typing import Dict, Union
+from typing import Dict, Optional, Set, Union
 
 from PIL import Image, ImageDraw
 
@@ -12,6 +12,34 @@ from ..utils.database.models import RoverSign, RoverSignData
 from ..utils.database.states import SignStatus
 from ..utils.fonts.waves_fonts import waves_font_24
 from ..utils.rover_api import rover_api
+
+BBS_TASK_KEYWORDS: Dict[str, str] = {
+    "bbs_sign": "签到",
+    "bbs_detail": "浏览",
+    "bbs_like": "点赞",
+    "bbs_share": "分享",
+}
+
+BBS_TASK_LABELS: Dict[str, str] = {
+    "bbs_sign": "用户签到",
+    "bbs_detail": "浏览帖子",
+    "bbs_like": "点赞帖子",
+    "bbs_share": "分享帖子",
+}
+
+
+def get_bbs_link_config() -> Set[str]:
+    bbs_link = RoverSignConfig.get_config("BBSLink").data
+    return set(bbs_link) if bbs_link else set()
+
+
+def get_task_key_from_remark(remark: Optional[str]) -> Optional[str]:
+    if not remark:
+        return None
+    for key, keyword in BBS_TASK_KEYWORDS.items():
+        if keyword in remark:
+            return key
+    return None
 
 
 async def get_sign_interval(is_bbs: bool = False):
@@ -153,6 +181,10 @@ async def do_single_task(uid, token) -> Union[bool, Dict[str, bool]]:
     if not rover_sign:
         rover_sign = RoverSignData.build_bbs_sign(uid)
 
+    bbs_link_config = get_bbs_link_config()
+    if not bbs_link_config:
+        return True
+
     # 任务列表
     task_res = await rover_api.get_task(token, uid)
     if not task_res or not task_res.success:
@@ -160,21 +192,36 @@ async def do_single_task(uid, token) -> Union[bool, Dict[str, bool]]:
     if not task_res.data or not isinstance(task_res.data, dict):
         return False
 
-    for i in task_res.data["dailyTask"]:
-        if i["completeTimes"] != i["needActionTimes"]:
-            break
-    else:
+    daily_tasks = task_res.data.get("dailyTask") or []
+    filtered_tasks = []
+    for task in daily_tasks:
+        task_key = get_task_key_from_remark(task.get("remark"))
+        if task_key and task_key in bbs_link_config:
+            filtered_tasks.append((task_key, task))
+
+    if not filtered_tasks:
+        return True
+
+    if all(
+        task["completeTimes"] == task["needActionTimes"] for _, task in filtered_tasks
+    ):
         is_save = False
-        if not rover_sign.bbs_sign:
+        if "bbs_sign" in bbs_link_config and rover_sign.bbs_sign != SignStatus.BBS_SIGN:
             rover_sign.bbs_sign = SignStatus.BBS_SIGN
             is_save = True
-        if not rover_sign.bbs_detail:
+        if (
+            "bbs_detail" in bbs_link_config
+            and rover_sign.bbs_detail != SignStatus.BBS_DETAIL
+        ):
             rover_sign.bbs_detail = SignStatus.BBS_DETAIL
             is_save = True
-        if not rover_sign.bbs_like:
+        if "bbs_like" in bbs_link_config and rover_sign.bbs_like != SignStatus.BBS_LIKE:
             rover_sign.bbs_like = SignStatus.BBS_LIKE
             is_save = True
-        if not rover_sign.bbs_share:
+        if (
+            "bbs_share" in bbs_link_config
+            and rover_sign.bbs_share != SignStatus.BBS_SHARE
+        ):
             rover_sign.bbs_share = SignStatus.BBS_SHARE
             is_save = True
         if is_save:
@@ -182,12 +229,11 @@ async def do_single_task(uid, token) -> Union[bool, Dict[str, bool]]:
         return True
 
     # check 1
-    need_post_list_flag = False
-    for i in task_res.data["dailyTask"]:
-        if i["completeTimes"] == i["needActionTimes"]:
-            continue
-        if "签到" not in i["remark"] or "分享" not in i["remark"]:
-            need_post_list_flag = True
+    need_post_list_flag = any(
+        task_key in {"bbs_detail", "bbs_like"}
+        and task["completeTimes"] != task["needActionTimes"]
+        for task_key, task in filtered_tasks
+    )
 
     post_list = []
     if need_post_list_flag:
@@ -207,29 +253,29 @@ async def do_single_task(uid, token) -> Union[bool, Dict[str, bool]]:
             return False
 
     form_result = {
-        "用户签到": False,
-        "浏览帖子": False,
-        "点赞帖子": False,
-        "分享帖子": False,
+        BBS_TASK_LABELS[task_key]: False
+        for task_key in bbs_link_config
+        if task_key in BBS_TASK_LABELS
     }
 
     # 随机打乱任务列表
-    random.shuffle(task_res.data["dailyTask"])
+    random.shuffle(filtered_tasks)
 
     # 获取到任务列表
-    for i in task_res.data["dailyTask"]:
-        if "签到" in i["remark"]:
-            form_result["用户签到"] = await do_sign_in(i, uid, token, rover_sign)
-        elif "浏览" in i["remark"]:
-            form_result["浏览帖子"] = await do_detail(
-                i, uid, token, post_list, rover_sign
+    for task_key, task in filtered_tasks:
+        label = BBS_TASK_LABELS.get(task_key)
+        if not label:
+            continue
+        if task_key == "bbs_sign":
+            form_result[label] = await do_sign_in(task, uid, token, rover_sign)
+        elif task_key == "bbs_detail":
+            form_result[label] = await do_detail(
+                task, uid, token, post_list, rover_sign
             )
-        elif "点赞" in i["remark"]:
-            form_result["点赞帖子"] = await do_like(
-                i, uid, token, post_list, rover_sign
-            )
-        elif "分享" in i["remark"]:
-            form_result["分享帖子"] = await do_share(i, uid, token, rover_sign)
+        elif task_key == "bbs_like":
+            form_result[label] = await do_like(task, uid, token, post_list, rover_sign)
+        elif task_key == "bbs_share":
+            form_result[label] = await do_share(task, uid, token, rover_sign)
 
         await asyncio.sleep(random.uniform(0, 1))
 
