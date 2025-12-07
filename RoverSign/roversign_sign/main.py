@@ -374,12 +374,12 @@ async def single_daily_sign(
         )
         if "失败" in im:
             all_msgs["failed"] += 1
-        else:
+        elif "已签到" not in im:
             all_msgs["success"] += 1
     elif gid == "off":
         if "失败" in im:
             all_msgs["failed"] += 1
-        else:
+        elif "已签到" not in im:
             all_msgs["success"] += 1
     else:
         # 向群消息推送列表添加这个群
@@ -400,7 +400,7 @@ async def single_daily_sign(
                     MessageSegment.text(im),
                 ]
             )
-        else:
+        elif "已签到" not in im:
             all_msgs["success"] += 1
             group_msgs[gid]["success"] += 1
 
@@ -426,12 +426,12 @@ async def single_pgr_daily_sign(
         )
         if "失败" in im:
             all_msgs["failed"] += 1
-        else:
+        elif "已签到" not in im:
             all_msgs["success"] += 1
     elif gid == "off":
         if "失败" in im:
             all_msgs["failed"] += 1
-        else:
+        elif "已签到" not in im:
             all_msgs["success"] += 1
     else:
         # 向群消息推送列表添加这个群
@@ -452,7 +452,7 @@ async def single_pgr_daily_sign(
                     MessageSegment.text(f"[战双] {im}"),
                 ]
             )
-        else:
+        elif "已签到" not in im:
             all_msgs["success"] += 1
             group_msgs[gid]["success"] += 1
 
