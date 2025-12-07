@@ -263,7 +263,7 @@ async def rover_sign_up_handler(bot: Bot, ev: Event):
 
     # 失效 UID 提示
     if expire_uid:
-        msg_list.append("--------------")
+        msg_list.append("-----------------------------")
         for uid in expire_uid:
             msg_list.append(f"失效特征码: {uid}")
 
