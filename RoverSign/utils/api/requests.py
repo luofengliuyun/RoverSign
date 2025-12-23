@@ -17,6 +17,7 @@ from gsuid_core.logger import logger
 from ..api.api import (
     FIND_ROLE_LIST_URL,
     FORUM_LIST_URL,
+    PGR_GAME_ID,
     WAVES_GAME_ID,
     GET_TASK_URL,
     LIKE_URL,
@@ -47,17 +48,26 @@ class RoverRequest:
         _temp = int(roleId)
         return _temp >= 200000000
 
-    def get_server_id(self, roleId, serverId: Optional[str] = None):
+    def get_server_id(
+        self,
+        roleId: str,
+        serverId: Optional[str] = None,
+        game_id: int = WAVES_GAME_ID,
+    ) -> str:
         if serverId:
             return serverId
-        if self.is_net(roleId):
-            return SERVER_ID_NET
-        else:
+        if game_id == WAVES_GAME_ID:
+            if self.is_net(roleId):
+                return SERVER_ID_NET
             return SERVER_ID
+        return ""
 
     async def refresh_bat_token(self, waves_user: WavesUser):
         success, access_token = await self.get_request_token(
-            waves_user.uid, waves_user.cookie, waves_user.did
+            waves_user.uid,
+            waves_user.cookie,
+            waves_user.did,
+            game_id=waves_user.game_id,
         )
         if not success:
             return waves_user
@@ -65,8 +75,6 @@ class RoverRequest:
         waves_user.bat = access_token
         await WavesUser.update_data_by_data(
             select_data={
-                # "user_id": waves_user.user_id,
-                # "bot_id": waves_user.bot_id,
                 "uid": waves_user.uid,
                 "game_id": waves_user.game_id,
             },
@@ -82,7 +90,6 @@ class RoverRequest:
         game_id: Optional[int] = WAVES_GAME_ID,
     ) -> Dict[str, Any]:
         headers = {
-            # "token": cookie,
             "did": "",
             "b-at": "",
         }
@@ -138,12 +145,15 @@ class RoverRequest:
         game_id: int = WAVES_GAME_ID,
     ):
         """刷新数据"""
+        if game_id == PGR_GAME_ID:
+            # 战双没有对应的 aki refresh 接口，直接跳过
+            return KuroApiResp.ok(True)
         header = await get_base_header()
         used_headers = await self.get_used_headers(cookie=token, uid=roleId, game_id=game_id)
         header.update(used_headers)
         data = {
             "gameId": game_id,
-            "serverId": self.get_server_id(roleId, serverId),
+            "serverId": self.get_server_id(roleId, serverId, game_id=game_id),
             "roleId": roleId,
         }
         return await self._waves_request(REFRESH_URL, "POST", header, data=data)
@@ -164,7 +174,12 @@ class RoverRequest:
         return await self._waves_request(LOGIN_LOG_URL, "POST", header, data=data)
 
     async def get_request_token(
-        self, roleId: str, token: str, did: str, serverId: Optional[str] = None
+        self,
+        roleId: str,
+        token: str,
+        did: str,
+        serverId: Optional[str] = None,
+        game_id: int = WAVES_GAME_ID,
     ) -> tuple[bool, str]:
         """请求token"""
         header = await get_base_header()
@@ -175,11 +190,24 @@ class RoverRequest:
                 "b-at": "",
             }
         )
+        if game_id == PGR_GAME_ID and not serverId:
+            role_list_res = await self.find_role_list(token, game_id)
+            if role_list_res.success and isinstance(role_list_res.data, list):
+                for role in role_list_res.data:
+                    if str(role.get("roleId")) == str(roleId):
+                        serverId = role.get("serverId")
+                        break
+            if not serverId:
+                logger.debug(
+                    f"[get_request_token] 未能获取战双 serverId - roleId: {roleId}"
+                )
+                return False, ""
         data = {
-            "serverId": self.get_server_id(roleId, serverId),
+            "serverId": self.get_server_id(roleId, serverId, game_id=game_id),
             "roleId": roleId,
         }
         raw_data = await self._waves_request(REQUEST_TOKEN, "POST", header, data=data)
+        logger.debug(f"[get_request_token] raw_data: {raw_data}")
         if raw_data.success and isinstance(raw_data.data, dict):
             if accessToken := raw_data.data.get("accessToken", ""):
                 return True, accessToken
@@ -197,7 +225,7 @@ class RoverRequest:
             "type": "1",
             "sizeType": "2",
             "gameId": gameId,
-            "serverId": self.get_server_id(roleId),
+            "serverId": self.get_server_id(roleId, game_id=gameId),
             "roleId": roleId,
         }
         return await self._waves_request(

@@ -282,6 +282,7 @@ async def rover_auto_sign_task():
     waves_sign_user = set()
     pgr_sign_user = set()
     bbs_link_config = get_bbs_link_config()
+    _token_dict: Dict[str, list[str]] = {}
     if (
         RoverSignConfig.get_config("BBSSchedSignin").data
         or RoverSignConfig.get_config("SchedSignin").data
@@ -312,6 +313,7 @@ async def rover_auto_sign_task():
                 # 如果 SigninMaster 为 True，添加到 user_list 中
                 need_user_list.append(user)
                 bbs_user.add(user.uid)
+                _token_dict.setdefault(user.cookie, []).append(user.uid)
                 # 根据 game_id 判断加入哪个游戏签到列表
                 if user.game_id == WAVES_GAME_ID:
                     waves_sign_user.add(user.uid)
@@ -349,13 +351,14 @@ async def rover_auto_sign_task():
     all_bbs_msgs = {"failed": 0, "success": 0}
 
     async def process_user(semaphore, user: WavesUser):
+        logger.debug(f"[自动签到] 处理 UID {user.uid} 的签到任务")
         async with semaphore:
             if user.cookie == "":
                 return
             if user.status:
                 return
 
-            user_game_id = user.game_id or WAVES_GAME_ID
+            user_game_id = user.game_id
 
             login_res = await rover_api.login_log(user.uid, user.cookie, game_id=user_game_id)
             if not login_res.success:
@@ -376,11 +379,29 @@ async def rover_auto_sign_task():
                 return
 
             await asyncio.sleep(random.randint(1, 2))
+            
+            # 战双签到
+            if (
+                RoverSignConfig.get_config("SchedSignin").data and user.uid in pgr_sign_user
+            ) or RoverSignConfig.get_config("SigninMaster").data and user.uid in pgr_sign_user:
+                logger.info(f"[战双签到] 开始为 UID {user.uid} 执行战双签到")
+                await single_pgr_daily_sign(
+                    user.bot_id,
+                    user.uid,
+                    user.sign_switch,
+                    user.user_id,
+                    user.cookie,
+                    private_pgr_sign_msgs,
+                    group_pgr_sign_msgs,
+                    all_pgr_sign_msgs,
+                )
+
+                await asyncio.sleep(random.random() * 2)
 
             # 鸣潮签到
             if (
                 RoverSignConfig.get_config("SchedSignin").data and user.uid in waves_sign_user
-            ) or RoverSignConfig.get_config("SigninMaster").data:
+            ) or RoverSignConfig.get_config("SigninMaster").data and user.uid in waves_sign_user:
                 await single_daily_sign(
                     user.bot_id,
                     user.uid,
@@ -394,51 +415,14 @@ async def rover_auto_sign_task():
 
                 await asyncio.sleep(random.random() * 2)
                 
-            if (
-                RoverSignConfig.get_config("SchedSignin").data and user.uid in pgr_sign_user
-            ) or RoverSignConfig.get_config("SigninMaster").data:
-                await single_pgr_daily_sign(
-                    user.bot_id,
-                    user.uid,
-                    user.sign_switch,
-                    user.user_id,
-                    user.cookie,
-                    private_pgr_sign_msgs,
-                    group_pgr_sign_msgs,
-                    all_pgr_sign_msgs,
-                )
-
-                await asyncio.sleep(random.random() * 2)
-                
-            # if user.uid in pgr_sign_user:
-            #     bind_data = await WavesBind.select_data(user.user_id, user.bot_id)
-            #     user_pgr_uid_list = []
-            #     if bind_data and bind_data.pgr_uid:
-            #         user_pgr_uid_list = [u for u in bind_data.pgr_uid.split("_") if u]
-
-            #     for pgr_uid in user_pgr_uid_list:
-            #         if RoverSignConfig.get_config("UserPGRSignin").data or RoverSignConfig.get_config("SigninMaster").data:
-            #             await single_pgr_daily_sign(
-            #                 user.bot_id,
-            #                 user.uid,
-            #                 pgr_uid,
-            #                 user.sign_switch,
-            #                 user.user_id,
-            #                 user.cookie,
-            #                 private_pgr_sign_msgs,
-            #                 group_pgr_sign_msgs,
-            #                 all_pgr_sign_msgs,
-            #             )
-            #             await asyncio.sleep(random.randint(1, 2))
-
             # 社区签到
             if (
                 RoverSignConfig.get_config("BBSSchedSignin").data
                 and user.uid in bbs_user
             ) or RoverSignConfig.get_config("SigninMaster").data:
                 # 先检查本地签到状态，避免重复请求 API
-                rover_sign = await RoverSign.get_sign_data(user.uid)
-                if rover_sign and SignStatus.bbs_sign_complete(rover_sign, bbs_link_config):
+                rover_sign = [await RoverSign.get_sign_data(uid) for uid in _token_dict.get(user.cookie, [])]
+                if any([rover and SignStatus.bbs_sign_complete(rover, bbs_link_config) for rover in rover_sign]):
                     # 已完成社区签到，跳过
                     logger.debug(f"[社区签到] UID {user.uid} 今日已完成，跳过")
                 else:
