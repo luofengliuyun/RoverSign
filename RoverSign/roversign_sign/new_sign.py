@@ -445,16 +445,10 @@ async def rover_auto_sign_task():
     max_concurrent: int = RoverSignConfig.get_config("SigninConcurrentNum").data
     semaphore = asyncio.Semaphore(max_concurrent)
     tasks = [process_user(semaphore, user) for user in need_user_list]
-    for i in range(0, len(tasks), max_concurrent):
-        batch = tasks[i : i + max_concurrent]
-        results = await asyncio.gather(*batch, return_exceptions=True)
-        for result in results:
-            if isinstance(result, Exception):
-                return f"{result.args[0]}"
-
-        delay = round(await get_sign_interval(), 2)
-        logger.info(f"[鸣潮] [自动签到] 等待{delay:.2f}秒进行下一次签到")
-        await asyncio.sleep(delay)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            return f"{result.args[0]}"
 
     # 合并鸣潮和战双的签到消息
     combined_private_sign_msgs = {}
