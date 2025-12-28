@@ -11,7 +11,7 @@
 
 
 cd gsuid_core/gsuid_core/plugins
-git clone --depth=1 https://github.com/Loping151/RoverSign 
+git clone --depth=1 https://github.com/luofengliuyun/RoverSign.git
 ```
 
 依赖：XutheringWavesUID 及其数据库
